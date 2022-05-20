@@ -1,0 +1,195 @@
+# Copyright 2020 - 2022 The Litegapps Project
+# Litegapps Functions
+# By wahyu6070
+#
+print(){ ui_print "$1"; }
+del (){ rm -rf "$@"; }
+cdir (){ mkdir -p "$@"; }
+printlog(){
+	print "$1"
+	if [ "$1" != " " ]; then
+	echo "$1 [$(date '+%d/%m/%Y %H:%M:%S')]" >> $log
+	else
+	print "$1" >> $log
+	echo "$1" >> $loglive
+	fi
+	}
+sedlog(){
+	echo "[Processing]  $1 [$(date '+%d/%m/%Y %H:%M:%S')]" >> $log
+	}
+	
+
+getp(){ grep "^$1" "$2" | head -n1 | cut -d = -f 2; }
+
+abort(){
+	print " " | tee -a $log
+	print "!!! $1" | tee -a $log
+	print " " | tee -a $log
+	exit 1
+	}
+	
+make_log(){
+	#creating log
+	NAME_LOG=`echo "[LOG]litegapps_$(getp version $MODPATH/module.prop).zip"`
+	if [ $DEV_MODE = OFF ]; then
+		printlog "- Make log"
+	else
+		printlog "- Make log to <$LITEGAPPS/$NAME_LOG>"
+	fi
+	for BLOG in $SYSTEM $PRODUCT $SYSTEM_EXT $VENDOR; do
+		local BASENAME=`basename $BLOG`
+		if [ -f $BLOG/build.prop ]; then
+			cp -pf $BLOG/build.prop $LITEGAPPS/log/${BASENAME}_build.prop
+		else
+			echo "! /${BASENAME} is not detected <$BLOG/build.prop>" >> $LITEGAPPS/log/${BASENAME}_build.prop
+		fi
+	done
+	
+	if [ -d $LITEGAPPS/log ]; then
+		listlog $tmp
+		listlog $MODPATH
+		listlog $LITEGAPPS
+		cd $LITEGAPPS/log
+		test -f $LITEGAPPS/$NAME_LOG && del $LITEGAPPS/$NAME_LOG
+		$bin/zip -r9 $LITEGAPPS/$NAME_LOG * >/dev/null 2>&1
+		cd /
+		del $LITEGAPPS/log
+	fi
+}
+report_bug(){
+	printlog " "
+	printlog "___________________________"
+	printlog "| installation failed !!! |"
+	printlog "|_________________________|"
+	printlog " known error •> $1"
+	printlog "___________________________"
+	make_log
+	printlog " Please report bug !"
+	printlog " send log : /sdcard/Android/litegapps/$NAME_LOG"
+	printlog " send in group telegram https://t.me/litegappsgroup"
+	printlog "____________________________"
+	printlog " "
+	del $MODPATH
+	[ $TYPEINSTALL = "kopi" ] && del $KOPIMOD
+	exit 1
+}
+
+GET_PROP(){
+	local LIST_PROP="
+	$SYSTEM/build.prop
+	$VENDOR/build.prop
+	$PRODUCT/build.prop
+	$SYSTEM_EXT/build.prop
+	"
+	local HJ VARPROP
+	for HJ in $LIST_PROP; do
+		if [ -f $HJ ] && grep -q "$1" "$HJ" 2>/dev/null; then
+			VARPROP=`grep "^$1" "$HJ" | head -n1 | cut -d = -f 2`
+			break
+		fi
+	done
+	
+	if [ "$VARPROP" ]; then
+		echo "$VARPROP"
+	elif [ "$(getprop $1)" ]; then
+		getprop $1
+	else
+		return 1
+	fi
+	
+	}
+litegapps_info(){
+	device_abpartition=$(getprop ro.build.ab_update)
+	[ -n "$device_abpartition" ] || device_abpartition="A only"
+	
+MODULEVERSION=`getp version $MODPATH/module.prop`
+MODULECODE=`getp versionCode $MODPATH/module.prop`
+MODULENAME=`getp name $MODPATH/module.prop`
+MODULEANDROID=`getp android $MODPATH/module.prop`
+MODULEDATE=`getp date $MODPATH/module.prop`
+MODULEAUTHOR=`getp author $MODPATH/module.prop`
+device_abpartition=$(getprop ro.build.ab_update)
+[ -n "$device_abpartition" ] || device_abpartition="A only"
+[ -n "$system" ] || system="systemless"
+[ -n "$TYPEINSTALL" ] || TYPEINSTALL="magisk module"
+printlog "____________________________________"
+printlog "|"
+printlog "| Name            : $MODULENAME"
+printlog "| Version         : $MODULEVERSION"
+printlog "| Build date      : $MODULEDATE"
+printlog "| By              : $MODULEAUTHOR"
+case $TYPEINSTALL in
+magisk | magisk_module)
+printlog "| Mode            : systemless"
+;;
+*)
+printlog "| Mode            : non systemless"
+;;
+esac
+printlog "|___________________________________"
+printlog "|"
+printlog "| Telegram        : https://t.me/litegapps"
+printlog "|___________________________________"
+printlog "|              Device Info"
+printlog "| Name Rom        : $(GET_PROP ro.build.display.id)"
+if [ "$(GET_PROP ro.product.vendor.model)" ]; then
+printlog "| Device          : $(GET_PROP ro.product.vendor.model)"
+elif [ "$(GET_PROP ro.product.model)" ]; then
+printlog "| Device          : $(GET_PROP ro.product.model)"
+else
+printlog "| Device          : null"
+fi
+
+if [ "$(GET_PROP ro.product.vendor.device)" ]; then
+printlog "| Codename        : $(GET_PROP ro.product.vendor.device)"
+elif [ "$(GET_PROP ro.product.device)" ]; then
+printlog "| Codename        : $(GET_PROP ro.product.device)"
+else
+printlog "| Codename        : null"
+fi
+printlog "| Android Version : $(GET_PROP ro.build.version.release)"
+printlog "| Architecture    : $ARCH"
+printlog "| Api             : $(GET_PROP ro.build.version.sdk)"
+printlog "| Density         : $(GET_PROP ro.sf.lcd_density)"
+printlog "| Seamless        : $device_abpartition"
+sedlog "| System          : $SYSTEM"
+printlog "|___________________________________"
+
+}
+
+ch_con(){
+chcon -h u:object_r:system_file:s0 "$1" || sedlog "Failed chcon $1"
+}
+
+ch_con_r(){
+chcon -hR u:object_r:system_file:s0 "$1" || sedlog "Failed chcon $1"
+}
+
+terminal_tips(){
+	print " "
+	print "  Thanks for using litegapps 😁"
+	print " "
+	printlog "*Tips"
+	print "- Open Terminal"
+	print "- su"
+	print "- litegapps"
+	print " "
+	print " "
+	}
+
+	
+partition_check(){
+	printlog "- Checking Partition"
+	mount > $LITEGAPPS/log/mount.txt
+	for R in $SYSTEM $PRODUCT $SYSTEM_EXT; do
+		if [ -d $R ] && [ "$(ls -A $R)" ]; then
+			touch $R/litegapps_4678
+			if [ -f $R/litegapps_4678 ]; then
+				sedlog "<$R> is mount RW"
+				del $R/litegapps_4678
+			else
+				sedlog "<$R> is mount RO"
+			fi
+		fi
+	done
+	}
