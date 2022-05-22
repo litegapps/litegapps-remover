@@ -193,3 +193,17 @@ partition_check(){
 		fi
 	done
 	}
+READ_FILE(){
+	local INPUT=$1
+	
+	test ! -d $INPUT && print "<$INPUT> is not directory"
+	
+	for PY in $(find $INPUT -type f); do
+		for YU in $(cat $PY); do
+			echo "$YU"
+		done
+	done
+	}
+	
+	
+	

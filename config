@@ -1,0 +1,12 @@
+name.builder=wahyu6070
+version=1
+version.code=1
+arch=arm64
+api=32
+compression=xz
+compression.level=1
+zip.level=9
+zip.signer=false
+set.time.stamp=true
+date.time=202007122239
+desc=Gapps Remover for removing google apps in roms

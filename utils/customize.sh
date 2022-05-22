@@ -1,14 +1,21 @@
 # Copyright 2020 - 2022 The Litegapps Project
 # customize.sh 
-# latest update 22-02-2021
+# latest update 22-05-2022
 # By wahyu6070
 
 chmod 755 $MODPATH/bin/functions
 #litegapps functions
 . $MODPATH/bin/functions
 
+LITEGAPPS=/data/media/0/Android/litegapps
+log=$LITEGAPPS/litegapps_remover.log
+files=$MODPATH/files
+tmp=$MODPATH/tmp
 LIST=$MODPATH/list/aosp
 [ "$TYPEINSTALL" ] || TYPEINSTALL=magisk
+
+
+cdir $(diname $log)
 
 #path
 if [ -f /system_root/system/build.prop ]; then
@@ -44,17 +51,124 @@ fi
 litegapps_info
 
 
-READ_FILE(){
-	local INPUT=$1
-	
-	test ! -d $INPUT && print "<$INPUT> is not directory"
-	
-	for PY in $(find $INPUT -type f); do
-		for YU in $(cat $PY); do
-			echo "$YU"
-		done
-	done
-	}
+[ ! -f $SYSTEM/build.prop ] && report_bug "System build.prop not found"
+
+#developer mode
+if [ -f /sdcard/Android/litegapps/mode_developer ]; then
+	DEV_MODE=ON
+else
+	DEV_MODE=OFF
+fi
+
+SDKTARGET=$(getp ro.build.version.sdk $SYSTEM/build.prop)
+findarch=$(getp ro.product.cpu.abi $SYSTEM/build.prop | cut -d '-' -f -1)
+case $findarch in
+arm64) ARCH=arm64 ;;
+armeabi) ARCH=arm ;;
+x86) ARCH=x86 ;;
+x86_64) ARCH=x86_64 ;;
+*) report_bug " <$findarch> Your Architecture Not Support" ;;
+esac
+
+#mode installation
+[ $TYPEINSTALL ] || TYPEINSTALL=magisk_module
+case $TYPEINSTALL in
+kopi)
+	sedlog "- Type install KOPI module"
+;;
+magisk)
+	sedlog "- Type install KOPI installer convert to magisk module"
+;;
+*)
+	sedlog "- Type install MAGISK module"
+;;
+esac
+
+# Test /data rw partition
+case $TYPEINSTALL in
+magisk | magisk_module)
+	DIR_TEST=/data/adb/test8989
+	cdir $DIR_TEST
+	touch $DIR_TEST/io
+	if [ -f $DIR_TEST/io ]; then
+		del $DIR_TEST
+	else
+		report_bug "/data partition is encrypt or read only"
+	fi
+;;
+esac
+
+
+#bin
+bin=$MODPATH/bin/$ARCH
+
+chmod -R 755 $bin
+
+#checking format file
+if [ -f $files/files.tar.xz ]; then
+	format_file=xz
+elif [ -f $files/files.tar.7z ]; then
+	format_file=7za
+elif [ -f $files/files.tar.br ]; then
+	format_file=brotli
+elif [ -f $files/files.tar.gz ]; then
+	format_file=gzip
+elif [ -f $files/files.tar.zst ]; then
+	format_file=zstd
+elif [ -f $files/files.tar.zip ]; then
+	format_file=zip
+else
+	report_bug "Files format not found or format not support"
+	listlog $files
+fi
+sedlog "Format file : $format_file"
+
+
+#checking executable
+for W in $format_file tar zip; do
+	test ! -f $bin/$W && report_bug "Please add executable <$W> in <$bin/$W>"
+done
+
+#extracting file format
+printlog "- Extracting Files"
+case $format_file in
+xz)
+	$bin/xz -d $files/files.tar.xz || report_bug "Failed extract <files.tar.xz>"
+;;
+7za)
+	$bin/7za e -y $files/files.tar.7z >/dev/null || report_bug "Failed extract <files.tar.7z>"
+	;;
+gunzip)
+	$bin/gzip -d $files/files.tar.gz || report_bug "Failed extract <files.tar.gz>"
+	;;
+brotli)
+	$bin/brotli -dj $files/files.tar.br || report_bug "Failed extract <files.tar.br>"
+	;;
+zstd)
+	$bin/zstd -df --rm $files/files.tar.zst || report_bug "Failed extract <files.tar.zst>"
+	;;
+zip)
+	unzip -o $files/files.tar.zip -d $files >/dev/null || report_bug "Failed extract <files.tar.zip>"
+;;
+*)
+	report_bug "File format not support"
+	listlog $files ;;
+esac
+
+#extract tar files
+printlog "- Extracting Archive"
+if [ -f $files/files.tar ]; then
+	cdir $MODPATH/modules
+	$bin/tar -xf $files/files.tar -C $MODPATH/modules
+else
+	report_bug "File <files.tar> not found !!!"
+fi
+
+
+#cheking sdk files
+if [ ! -d $MODPATH/modules/$ARCH/$SDKTARGET ]; then
+	printlog "! Apps files not support in your android version [SKIP]"
+fi
 
 
 PARTITIONS="
@@ -62,8 +176,6 @@ $SYSTEM
 $PRODUCT
 $SYSTEM_EXT
 "
-
-TYPEINSTALL=kopi
 
 
 ## app and priv-app debloat
@@ -363,4 +475,47 @@ else
 	done
 fi
 
+#module
+printlog "- Installing Modules"
+for TY in $(ls -1 $MODPATH/modules/$ARCH/$API); do
+	printlog "- Installing $(cat $MODPATH/modules/$ARCH/$API/$TY/name)"
+	cp -rdf $MODPATH/modules/$ARCH/$API/$TY/system/* $MODPATH/system/
+done
+
+#Permissions
+find $MODPATH/system -type d 2>/dev/null | while read setperm_dir; do
+	ch_con $setperm_dir
+	chmod 755 $setperm_dir
+done
+
+printlog "- Set Permissions"
+find $MODPATH/system -type f 2>/dev/null | while read setperm_file; do
+	ch_con $setperm_file
+	chmod 644 $setperm_file
+done
+
+if [ -d $MODPATH/system/product/overlay ]; then
+	for FG in $(ls -1 $MODPATH/system/product/overlay); do
+		chcon -h u:object_r:vendor_overlay_file:s0 $MODPATH/system/product/overlay/$FG
+		chmod 644 $MODPATH/system/product/overlay/$FG
+	done
+
+fi
+
+case $TYPEINSTALL in
+magisk | magisk_module)
+	[ "$MAGISKUP" ] || MAGISKUP=$MODPATH
+	printlog "- Cleaning Cache"
+	TMP_LIST="
+	$tmp
+	$MAGISKUP/modules
+	$MAGISKUP/bin
+	$MAGISKUP/list
+	$MAGISKUP/files
+	"
+	for Y4 in $TMP_LIST; do
+		del $Y4
+	done
+;;
+esac
 print " "
